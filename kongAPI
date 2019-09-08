@@ -1,0 +1,1037 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "AWS CloudFormation template to create a new VPC or use an existing VPC for ECS deployment in Create Cluster Wizard. Requires exactly 1 Instance Types for a Spot Request.\n",
+    "Parameters": {
+        "EcsClusterName": {
+            "Type": "String",
+            "Description": "Specifies the ECS Cluster Name with which the resources would be associated\n",
+            "Default": "default"
+        },
+        "EcsAmiId": {
+            "Type": "String",
+            "Description": "Specifies the AMI ID for your container instances."
+        },
+        "EcsInstanceType": {
+            "Type": "CommaDelimitedList",
+            "Description": "Specifies the EC2 instance type for your container instances. Defaults to m4.large\n",
+            "Default": "m4.large",
+            "ConstraintDescription": "must be a valid EC2 instance type."
+        },
+        "KeyName": {
+            "Type": "String",
+            "Description": "Optional - Specifies the name of an existing Amazon EC2 key pair to enable SSH access to the EC2 instances in your cluster.\n",
+            "Default": ""
+        },
+        "VpcId": {
+            "Type": "String",
+            "Description": "Optional - Specifies the ID of an existing VPC in which to launch your container instances. If you specify a VPC ID, you must specify a list of existing subnets in that VPC. If you do not specify a VPC ID, a new VPC is created with atleast 1 subnet.\n",
+            "Default": "",
+            "ConstraintDescription": "VPC Id must begin with 'vpc-' or leave blank to have a new VPC created\n"
+        },
+        "SubnetIds": {
+            "Type": "CommaDelimitedList",
+            "Description": "Optional - Specifies the Comma separated list of existing VPC Subnet Ids where ECS instances will run\n",
+            "Default": ""
+        },
+        "SecurityGroupId": {
+            "Type": "String",
+            "Description": "Optional - Specifies the Security Group Id of an existing Security Group. Leave blank to have a new Security Group created\n",
+            "Default": ""
+        },
+        "VpcCidr": {
+            "Type": "String",
+            "Description": "Optional - Specifies the CIDR Block of VPC",
+            "Default": ""
+        },
+        "SubnetCidr1": {
+            "Type": "String",
+            "Description": "Specifies the CIDR Block of Subnet 1",
+            "Default": ""
+        },
+        "SubnetCidr2": {
+            "Type": "String",
+            "Description": "Specifies the CIDR Block of Subnet 2",
+            "Default": ""
+        },
+        "SubnetCidr3": {
+            "Type": "String",
+            "Description": "Specifies the CIDR Block of Subnet 3",
+            "Default": ""
+        },
+        "AsgMaxSize": {
+            "Type": "Number",
+            "Description": "Specifies the number of instances to launch and register to the cluster. Defaults to 1.\n",
+            "Default": "1"
+        },
+        "IamRoleInstanceProfile": {
+            "Type": "String",
+            "Description": "Specifies the Name or the Amazon Resource Name (ARN) of the instance profile associated with the IAM role for the instance\n"
+        },
+        "SecurityIngressFromPort": {
+            "Type": "Number",
+            "Description": "Optional - Specifies the Start of Security Group port to open on ECS instances - defaults to port 0\n",
+            "Default": "0"
+        },
+        "SecurityIngressToPort": {
+            "Type": "Number",
+            "Description": "Optional - Specifies the End of Security Group port to open on ECS instances - defaults to port 65535\n",
+            "Default": "65535"
+        },
+        "SecurityIngressCidrIp": {
+            "Type": "String",
+            "Description": "Optional - Specifies the CIDR/IP range for Security Ports - defaults to 0.0.0.0/0\n",
+            "Default": "0.0.0.0/0"
+        },
+        "EcsEndpoint": {
+            "Type": "String",
+            "Description": "Optional - Specifies the ECS Endpoint for the ECS Agent to connect to\n",
+            "Default": ""
+        },
+        "VpcAvailabilityZones": {
+            "Type": "CommaDelimitedList",
+            "Description": "Specifies a comma-separated list of 3 VPC Availability Zones for the creation of new subnets. These zones must have the available status.\n",
+            "Default": ""
+        },
+        "EbsVolumeSize": {
+            "Type": "Number",
+            "Description": "Optional - Specifies the Size in GBs, of the newly created Amazon Elastic Block Store (Amazon EBS) volume\n",
+            "Default": "0"
+        },
+        "EbsVolumeType": {
+            "Type": "String",
+            "Description": "Optional - Specifies the Type of (Amazon EBS) volume",
+            "Default": "",
+            "AllowedValues": [
+                "",
+                "standard",
+                "io1",
+                "gp2",
+                "sc1",
+                "st1"
+            ],
+            "ConstraintDescription": "Must be a valid EC2 volume type."
+        },
+        "DeviceName": {
+            "Type": "String",
+            "Description": "Optional - Specifies the device mapping for the Volume"
+        },
+        "UseSpot": {
+            "Type": "String",
+            "Default": "false"
+        },
+        "IamSpotFleetRoleArn": {
+            "Type": "String",
+            "Default": ""
+        },
+        "SpotPrice": {
+            "Type": "String",
+            "Default": ""
+        },
+        "SpotAllocationStrategy": {
+            "Type": "String",
+            "Default": "diversified",
+            "AllowedValues": [
+                "lowestPrice",
+                "diversified"
+            ]
+        },
+        "UserData": {
+            "Type": "String"
+        },
+        "IsWindows": {
+            "Type": "String",
+            "Default": "false"
+        }
+    },
+    "Conditions": {
+        "CreateEC2LCWithKeyPair": {
+            "Fn::Not": [
+                {
+                    "Fn::Equals": [
+                        {
+                            "Ref": "KeyName"
+                        },
+                        ""
+                    ]
+                }
+            ]
+        },
+        "SetEndpointToECSAgent": {
+            "Fn::Not": [
+                {
+                    "Fn::Equals": [
+                        {
+                            "Ref": "EcsEndpoint"
+                        },
+                        ""
+                    ]
+                }
+            ]
+        },
+        "CreateNewSecurityGroup": {
+            "Fn::Equals": [
+                {
+                    "Ref": "SecurityGroupId"
+                },
+                ""
+            ]
+        },
+        "CreateNewVpc": {
+            "Fn::Equals": [
+                {
+                    "Ref": "VpcId"
+                },
+                ""
+            ]
+        },
+        "CreateSubnet1": {
+            "Fn::And": [
+                {
+                    "Fn::Not": [
+                        {
+                            "Fn::Equals": [
+                                {
+                                    "Ref": "SubnetCidr1"
+                                },
+                                ""
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "Condition": "CreateNewVpc"
+                }
+            ]
+        },
+        "CreateSubnet2": {
+            "Fn::And": [
+                {
+                    "Fn::Not": [
+                        {
+                            "Fn::Equals": [
+                                {
+                                    "Ref": "SubnetCidr2"
+                                },
+                                ""
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "Condition": "CreateSubnet1"
+                }
+            ]
+        },
+        "CreateSubnet3": {
+            "Fn::And": [
+                {
+                    "Fn::Not": [
+                        {
+                            "Fn::Equals": [
+                                {
+                                    "Ref": "SubnetCidr3"
+                                },
+                                ""
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "Condition": "CreateSubnet2"
+                }
+            ]
+        },
+        "CreateWithSpot": {
+            "Fn::Equals": [
+                {
+                    "Ref": "UseSpot"
+                },
+                "true"
+            ]
+        },
+        "CreateWithASG": {
+            "Fn::Not": [
+                {
+                    "Condition": "CreateWithSpot"
+                }
+            ]
+        },
+        "CreateWithSpotPrice": {
+            "Fn::Not": [
+                {
+                    "Fn::Equals": [
+                        {
+                            "Ref": "SpotPrice"
+                        },
+                        ""
+                    ]
+                }
+            ]
+        }
+    },
+    "Resources": {
+        "Vpc": {
+            "Condition": "CreateSubnet1",
+            "Type": "AWS::EC2::VPC",
+            "Properties": {
+                "CidrBlock": {
+                    "Ref": "VpcCidr"
+                },
+                "EnableDnsSupport": "true",
+                "EnableDnsHostnames": "true"
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "a7b2b428-bae5-4891-9dfe-52a9400f9e6c"
+                }
+            }
+        },
+        "PubSubnetAz1": {
+            "Condition": "CreateSubnet1",
+            "Type": "AWS::EC2::Subnet",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "Vpc"
+                },
+                "CidrBlock": {
+                    "Ref": "SubnetCidr1"
+                },
+                "AvailabilityZone": {
+                    "Fn::Select": [
+                        0,
+                        {
+                            "Ref": "VpcAvailabilityZones"
+                        }
+                    ]
+                },
+                "MapPublicIpOnLaunch": true
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "cc87db63-a128-4935-b0a9-2259618e54db"
+                }
+            }
+        },
+        "PubSubnetAz2": {
+            "Condition": "CreateSubnet2",
+            "Type": "AWS::EC2::Subnet",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "Vpc"
+                },
+                "CidrBlock": {
+                    "Ref": "SubnetCidr2"
+                },
+                "AvailabilityZone": {
+                    "Fn::Select": [
+                        1,
+                        {
+                            "Ref": "VpcAvailabilityZones"
+                        }
+                    ]
+                },
+                "MapPublicIpOnLaunch": true
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "02eb0c4a-bbf9-4a90-83e5-7dba9bb12241"
+                }
+            }
+        },
+        "PubSubnetAz3": {
+            "Condition": "CreateSubnet3",
+            "Type": "AWS::EC2::Subnet",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "Vpc"
+                },
+                "CidrBlock": {
+                    "Ref": "SubnetCidr3"
+                },
+                "AvailabilityZone": {
+                    "Fn::Select": [
+                        2,
+                        {
+                            "Ref": "VpcAvailabilityZones"
+                        }
+                    ]
+                },
+                "MapPublicIpOnLaunch": true
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "fef90c6b-9bf0-44e1-8c7d-44e8b681cf6c"
+                }
+            }
+        },
+        "InternetGateway": {
+            "Condition": "CreateSubnet1",
+            "Type": "AWS::EC2::InternetGateway",
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "08ac8f20-71d8-46e1-86f8-9048ca1b2baf"
+                }
+            }
+        },
+        "AttachGateway": {
+            "Condition": "CreateSubnet1",
+            "Type": "AWS::EC2::VPCGatewayAttachment",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "Vpc"
+                },
+                "InternetGatewayId": {
+                    "Ref": "InternetGateway"
+                }
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "c56e468b-cbdd-40bd-ab03-ebda9a47d2a9"
+                }
+            }
+        },
+        "RouteViaIgw": {
+            "Condition": "CreateSubnet1",
+            "Type": "AWS::EC2::RouteTable",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "Vpc"
+                }
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "950128d1-6db6-41cf-887b-4c3e6a11698a"
+                }
+            }
+        },
+        "PublicRouteViaIgw": {
+            "Condition": "CreateSubnet1",
+            "Type": "AWS::EC2::Route",
+            "DependsOn": "AttachGateway",
+            "Properties": {
+                "RouteTableId": {
+                    "Ref": "RouteViaIgw"
+                },
+                "DestinationCidrBlock": "0.0.0.0/0",
+                "GatewayId": {
+                    "Ref": "InternetGateway"
+                }
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "dece8757-0657-41dc-bffd-91fc84b1bc75"
+                }
+            }
+        },
+        "PubSubnet1RouteTableAssociation": {
+            "Condition": "CreateSubnet1",
+            "Type": "AWS::EC2::SubnetRouteTableAssociation",
+            "Properties": {
+                "SubnetId": {
+                    "Ref": "PubSubnetAz1"
+                },
+                "RouteTableId": {
+                    "Ref": "RouteViaIgw"
+                }
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "45643fe9-c53d-4e40-9092-8cf257729ea0"
+                }
+            }
+        },
+        "PubSubnet2RouteTableAssociation": {
+            "Condition": "CreateSubnet2",
+            "Type": "AWS::EC2::SubnetRouteTableAssociation",
+            "Properties": {
+                "SubnetId": {
+                    "Ref": "PubSubnetAz2"
+                },
+                "RouteTableId": {
+                    "Ref": "RouteViaIgw"
+                }
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "0d8a9069-bc01-44e4-bc22-d55fe1b4c7a3"
+                }
+            }
+        },
+        "PubSubnet3RouteTableAssociation": {
+            "Condition": "CreateSubnet3",
+            "Type": "AWS::EC2::SubnetRouteTableAssociation",
+            "Properties": {
+                "SubnetId": {
+                    "Ref": "PubSubnetAz3"
+                },
+                "RouteTableId": {
+                    "Ref": "RouteViaIgw"
+                }
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "13ffe4fb-6096-4b41-bef8-272a7ee1673d"
+                }
+            }
+        },
+        "EcsSecurityGroup": {
+            "Condition": "CreateNewSecurityGroup",
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "ECS Allowed Ports",
+                "VpcId": {
+                    "Fn::If": [
+                        "CreateSubnet1",
+                        {
+                            "Ref": "Vpc"
+                        },
+                        {
+                            "Ref": "VpcId"
+                        }
+                    ]
+                },
+                "SecurityGroupIngress": {
+                    "IpProtocol": "tcp",
+                    "FromPort": {
+                        "Ref": "SecurityIngressFromPort"
+                    },
+                    "ToPort": {
+                        "Ref": "SecurityIngressToPort"
+                    },
+                    "CidrIp": {
+                        "Ref": "SecurityIngressCidrIp"
+                    }
+                }
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "5e6c7500-6d2f-47da-9128-dd22a0e437cf"
+                }
+            }
+        },
+        "EcsInstanceLc": {
+            "Type": "AWS::AutoScaling::LaunchConfiguration",
+            "Condition": "CreateWithASG",
+            "Properties": {
+                "ImageId": {
+                    "Ref": "EcsAmiId"
+                },
+                "InstanceType": {
+                    "Fn::Select": [
+                        0,
+                        {
+                            "Ref": "EcsInstanceType"
+                        }
+                    ]
+                },
+                "AssociatePublicIpAddress": true,
+                "IamInstanceProfile": {
+                    "Ref": "IamRoleInstanceProfile"
+                },
+                "KeyName": {
+                    "Fn::If": [
+                        "CreateEC2LCWithKeyPair",
+                        {
+                            "Ref": "KeyName"
+                        },
+                        {
+                            "Ref": "AWS::NoValue"
+                        }
+                    ]
+                },
+                "SecurityGroups": [
+                    {
+                        "Fn::If": [
+                            "CreateNewSecurityGroup",
+                            {
+                                "Ref": "EcsSecurityGroup"
+                            },
+                            {
+                                "Ref": "SecurityGroupId"
+                            }
+                        ]
+                    }
+                ],
+                "BlockDeviceMappings": [
+                    {
+                        "DeviceName": {
+                            "Ref": "DeviceName"
+                        },
+                        "Ebs": {
+                            "VolumeSize": {
+                                "Ref": "EbsVolumeSize"
+                            },
+                            "VolumeType": {
+                                "Ref": "EbsVolumeType"
+                            }
+                        }
+                    }
+                ],
+                "UserData": {
+                    "Fn::Base64": {
+                        "Ref": "UserData"
+                    }
+                }
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "89bab18c-4534-4e1b-9485-a31f28d89ab6"
+                }
+            }
+        },
+        "EcsInstanceAsg": {
+            "Type": "AWS::AutoScaling::AutoScalingGroup",
+            "Condition": "CreateWithASG",
+            "Properties": {
+                "VPCZoneIdentifier": {
+                    "Fn::If": [
+                        "CreateSubnet1",
+                        {
+                            "Fn::If": [
+                                "CreateSubnet2",
+                                {
+                                    "Fn::If": [
+                                        "CreateSubnet3",
+                                        [
+                                            {
+                                                "Fn::Sub": "${PubSubnetAz1}, ${PubSubnetAz2}, ${PubSubnetAz3}"
+                                            }
+                                        ],
+                                        [
+                                            {
+                                                "Fn::Sub": "${PubSubnetAz1}, ${PubSubnetAz2}"
+                                            }
+                                        ]
+                                    ]
+                                },
+                                [
+                                    {
+                                        "Fn::Sub": "${PubSubnetAz1}"
+                                    }
+                                ]
+                            ]
+                        },
+                        {
+                            "Ref": "SubnetIds"
+                        }
+                    ]
+                },
+                "LaunchConfigurationName": {
+                    "Ref": "EcsInstanceLc"
+                },
+                "MinSize": "0",
+                "MaxSize": {
+                    "Ref": "AsgMaxSize"
+                },
+                "DesiredCapacity": {
+                    "Ref": "AsgMaxSize"
+                },
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": {
+                            "Fn::Sub": "ECS Instance - ${AWS::StackName}"
+                        },
+                        "PropagateAtLaunch": "true"
+                    },
+                    {
+                        "Key": "Description",
+                        "Value": "This instance is the part of the Auto Scaling group which was created through ECS Console",
+                        "PropagateAtLaunch": "true"
+                    }
+                ]
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "84286fa5-22d4-435e-89bb-a4dace1d7e90"
+                }
+            }
+        },
+        "EcsSpotFleet": {
+            "Condition": "CreateWithSpot",
+            "Type": "AWS::EC2::SpotFleet",
+            "Properties": {
+                "SpotFleetRequestConfigData": {
+                    "AllocationStrategy": {
+                        "Ref": "SpotAllocationStrategy"
+                    },
+                    "IamFleetRole": {
+                        "Ref": "IamSpotFleetRoleArn"
+                    },
+                    "TargetCapacity": {
+                        "Ref": "AsgMaxSize"
+                    },
+                    "SpotPrice": {
+                        "Fn::If": [
+                            "CreateWithSpotPrice",
+                            {
+                                "Ref": "SpotPrice"
+                            },
+                            {
+                                "Ref": "AWS::NoValue"
+                            }
+                        ]
+                    },
+                    "TerminateInstancesWithExpiration": true,
+                    "LaunchSpecifications": [
+                        {
+                            "IamInstanceProfile": {
+                                "Arn": {
+                                    "Ref": "IamRoleInstanceProfile"
+                                }
+                            },
+                            "ImageId": {
+                                "Ref": "EcsAmiId"
+                            },
+                            "InstanceType": {
+                                "Fn::Select": [
+                                    0,
+                                    {
+                                        "Ref": "EcsInstanceType"
+                                    }
+                                ]
+                            },
+                            "KeyName": {
+                                "Fn::If": [
+                                    "CreateEC2LCWithKeyPair",
+                                    {
+                                        "Ref": "KeyName"
+                                    },
+                                    {
+                                        "Ref": "AWS::NoValue"
+                                    }
+                                ]
+                            },
+                            "Monitoring": {
+                                "Enabled": true
+                            },
+                            "SecurityGroups": [
+                                {
+                                    "GroupId": {
+                                        "Fn::If": [
+                                            "CreateNewSecurityGroup",
+                                            {
+                                                "Ref": "EcsSecurityGroup"
+                                            },
+                                            {
+                                                "Ref": "SecurityGroupId"
+                                            }
+                                        ]
+                                    }
+                                }
+                            ],
+                            "SubnetId": {
+                                "Fn::If": [
+                                    "CreateSubnet1",
+                                    {
+                                        "Fn::If": [
+                                            "CreateSubnet2",
+                                            {
+                                                "Fn::If": [
+                                                    "CreateSubnet3",
+                                                    {
+                                                        "Fn::Join": [
+                                                            ",",
+                                                            [
+                                                                {
+                                                                    "Ref": "PubSubnetAz1"
+                                                                },
+                                                                {
+                                                                    "Ref": "PubSubnetAz2"
+                                                                },
+                                                                {
+                                                                    "Ref": "PubSubnetAz3"
+                                                                }
+                                                            ]
+                                                        ]
+                                                    },
+                                                    {
+                                                        "Fn::Join": [
+                                                            ",",
+                                                            [
+                                                                {
+                                                                    "Ref": "PubSubnetAz1"
+                                                                },
+                                                                {
+                                                                    "Ref": "PubSubnetAz2"
+                                                                }
+                                                            ]
+                                                        ]
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "Ref": "PubSubnetAz1"
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "Fn::Join": [
+                                            ",",
+                                            {
+                                                "Ref": "SubnetIds"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                            "BlockDeviceMappings": [
+                                {
+                                    "DeviceName": {
+                                        "Ref": "DeviceName"
+                                    },
+                                    "Ebs": {
+                                        "VolumeSize": {
+                                            "Ref": "EbsVolumeSize"
+                                        },
+                                        "VolumeType": {
+                                            "Ref": "EbsVolumeType"
+                                        }
+                                    }
+                                }
+                            ],
+                            "UserData": {
+                                "Fn::Base64": {
+                                    "Ref": "UserData"
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "a3cb9635-d8fc-41a7-914b-459983dd3997"
+                }
+            }
+        }
+    },
+    "Outputs": {
+        "EcsInstanceAsgName": {
+            "Condition": "CreateWithASG",
+            "Description": "Auto Scaling Group Name for ECS Instances",
+            "Value": {
+                "Ref": "EcsInstanceAsg"
+            }
+        },
+        "EcsSpotFleetRequestId": {
+            "Condition": "CreateWithSpot",
+            "Description": "Spot Fleet Request for ECS Instances",
+            "Value": {
+                "Ref": "EcsSpotFleet"
+            }
+        },
+        "UsedByECSCreateCluster": {
+            "Description": "Flag used by ECS Create Cluster Wizard",
+            "Value": "true"
+        },
+        "TemplateVersion": {
+            "Description": "The version of the template used by Create Cluster Wizard",
+            "Value": "2.0.0"
+        }
+    },
+    "Metadata": {
+        "AWS::CloudFormation::Designer": {
+            "08ac8f20-71d8-46e1-86f8-9048ca1b2baf": {
+                "size": {
+                    "width": 60,
+                    "height": 60
+                },
+                "position": {
+                    "x": 720,
+                    "y": 90
+                },
+                "z": 1,
+                "embeds": []
+            },
+            "a7b2b428-bae5-4891-9dfe-52a9400f9e6c": {
+                "size": {
+                    "width": 600,
+                    "height": 600
+                },
+                "position": {
+                    "x": 40,
+                    "y": -60
+                },
+                "z": 1,
+                "embeds": [
+                    "950128d1-6db6-41cf-887b-4c3e6a11698a",
+                    "fef90c6b-9bf0-44e1-8c7d-44e8b681cf6c",
+                    "02eb0c4a-bbf9-4a90-83e5-7dba9bb12241",
+                    "cc87db63-a128-4935-b0a9-2259618e54db"
+                ]
+            },
+            "5e6c7500-6d2f-47da-9128-dd22a0e437cf": {
+                "size": {
+                    "width": 60,
+                    "height": 60
+                },
+                "position": {
+                    "x": 720,
+                    "y": 210
+                },
+                "z": 1,
+                "embeds": []
+            },
+            "89bab18c-4534-4e1b-9485-a31f28d89ab6": {
+                "size": {
+                    "width": 60,
+                    "height": 60
+                },
+                "position": {
+                    "x": 720,
+                    "y": 330
+                },
+                "z": 1,
+                "embeds": []
+            },
+            "84286fa5-22d4-435e-89bb-a4dace1d7e90": {
+                "size": {
+                    "width": 60,
+                    "height": 60
+                },
+                "position": {
+                    "x": 720,
+                    "y": 450
+                },
+                "z": 1,
+                "embeds": [],
+                "isassociatedwith": [
+                    "89bab18c-4534-4e1b-9485-a31f28d89ab6"
+                ]
+            },
+            "950128d1-6db6-41cf-887b-4c3e6a11698a": {
+                "size": {
+                    "width": 240,
+                    "height": 240
+                },
+                "position": {
+                    "x": 70,
+                    "y": 0
+                },
+                "z": 2,
+                "parent": "a7b2b428-bae5-4891-9dfe-52a9400f9e6c",
+                "embeds": [
+                    "dece8757-0657-41dc-bffd-91fc84b1bc75"
+                ],
+                "iscontainedinside": [
+                    "a7b2b428-bae5-4891-9dfe-52a9400f9e6c"
+                ]
+            },
+            "c56e468b-cbdd-40bd-ab03-ebda9a47d2a9": {
+                "source": {
+                    "id": "a7b2b428-bae5-4891-9dfe-52a9400f9e6c"
+                },
+                "target": {
+                    "id": "08ac8f20-71d8-46e1-86f8-9048ca1b2baf"
+                }
+            },
+            "dece8757-0657-41dc-bffd-91fc84b1bc75": {
+                "size": {
+                    "width": 60,
+                    "height": 60
+                },
+                "position": {
+                    "x": 100,
+                    "y": 60
+                },
+                "z": 3,
+                "parent": "950128d1-6db6-41cf-887b-4c3e6a11698a",
+                "embeds": [],
+                "isassociatedwith": [
+                    "08ac8f20-71d8-46e1-86f8-9048ca1b2baf"
+                ],
+                "iscontainedinside": [
+                    "950128d1-6db6-41cf-887b-4c3e6a11698a"
+                ],
+                "dependson": [
+                    "c56e468b-cbdd-40bd-ab03-ebda9a47d2a9"
+                ]
+            },
+            "fef90c6b-9bf0-44e1-8c7d-44e8b681cf6c": {
+                "size": {
+                    "width": 150,
+                    "height": 150
+                },
+                "position": {
+                    "x": 70,
+                    "y": 300
+                },
+                "z": 2,
+                "parent": "a7b2b428-bae5-4891-9dfe-52a9400f9e6c",
+                "embeds": [],
+                "iscontainedinside": [
+                    "a7b2b428-bae5-4891-9dfe-52a9400f9e6c"
+                ]
+            },
+            "13ffe4fb-6096-4b41-bef8-272a7ee1673d": {
+                "source": {
+                    "id": "950128d1-6db6-41cf-887b-4c3e6a11698a"
+                },
+                "target": {
+                    "id": "fef90c6b-9bf0-44e1-8c7d-44e8b681cf6c"
+                }
+            },
+            "02eb0c4a-bbf9-4a90-83e5-7dba9bb12241": {
+                "size": {
+                    "width": 150,
+                    "height": 150
+                },
+                "position": {
+                    "x": 370,
+                    "y": 210
+                },
+                "z": 2,
+                "parent": "a7b2b428-bae5-4891-9dfe-52a9400f9e6c",
+                "embeds": [],
+                "iscontainedinside": [
+                    "a7b2b428-bae5-4891-9dfe-52a9400f9e6c"
+                ]
+            },
+            "0d8a9069-bc01-44e4-bc22-d55fe1b4c7a3": {
+                "source": {
+                    "id": "950128d1-6db6-41cf-887b-4c3e6a11698a"
+                },
+                "target": {
+                    "id": "02eb0c4a-bbf9-4a90-83e5-7dba9bb12241"
+                }
+            },
+            "cc87db63-a128-4935-b0a9-2259618e54db": {
+                "size": {
+                    "width": 150,
+                    "height": 150
+                },
+                "position": {
+                    "x": 370,
+                    "y": 0
+                },
+                "z": 2,
+                "parent": "a7b2b428-bae5-4891-9dfe-52a9400f9e6c",
+                "embeds": [],
+                "iscontainedinside": [
+                    "a7b2b428-bae5-4891-9dfe-52a9400f9e6c"
+                ]
+            },
+            "a3cb9635-d8fc-41a7-914b-459983dd3997": {
+                "size": {
+                    "width": 60,
+                    "height": 60
+                },
+                "position": {
+                    "x": 720,
+                    "y": 570
+                },
+                "z": 1,
+                "embeds": []
+            },
+            "45643fe9-c53d-4e40-9092-8cf257729ea0": {
+                "source": {
+                    "id": "950128d1-6db6-41cf-887b-4c3e6a11698a"
+                },
+                "target": {
+                    "id": "cc87db63-a128-4935-b0a9-2259618e54db"
+                }
+            }
+        }
+    }
+}
